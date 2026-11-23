@@ -36,6 +36,22 @@ ARROWS = {
 }
 DIRECTION_NAMES = {(HORIZONTAL, -1): "left", (HORIZONTAL, +1): "right",
                    (VERTICAL, -1): "up", (VERTICAL, +1): "down"}
+MAX_STARS = 3
+
+
+def stars_for(hints):
+    """Stars for a solved level: no hints 3, 1-3 hints 2, 4 or more 1."""
+    if hints == 0:
+        return 3
+    if hints <= 3:
+        return 2
+    return 1
+
+
+def star_text(n):
+    return "★" * n + "☆" * (MAX_STARS - n)
+
+
 CONTROLS = ("Drag cars with the mouse, or click one and use the arrow keys\n"
             "H hint · U undo · R restart · N next · Q quit")
 
@@ -58,7 +74,9 @@ class Game:
         self.start_message = start_message
         self.index = 0
         self.finished = False               # True on the end screen
-        self.total_moves = 0                # summed over solved levels
+        self.solved = {}                    # level index -> fewest moves used
+        self.stars = {}                     # level index -> best stars earned
+        self.hints = {}                     # level index -> hints used on it
         self.drag = None                    # (letter, grab offset) while dragging
         self._build_extras()
 
@@ -142,10 +160,15 @@ class Game:
             self.won = True
             self.selected = None
             self.drag = None
-            self.total_moves += self.moves
+            best = self.solved.get(self.index)
+            self.solved[self.index] = self.moves if best is None else min(best, self.moves)
+            hints = self.hints.get(self.index, 0)
+            earned = stars_for(hints)
+            self.stars[self.index] = max(earned, self.stars.get(self.index, 0))
             last = self.index == len(self.levels) - 1
-            verdict = "Perfect! " if self.moves == self.par else ""
-            self.message = (f"Solved in {self.moves} moves (par {self.par}). {verdict}"
+            used = "no hints" if hints == 0 else f"{hints} hint{'s' if hints > 1 else ''}"
+            self.message = (f"{star_text(earned)}  Solved in {self.moves} moves "
+                            f"(par {self.par}) with {used}. "
                             f"Press Next {'to finish' if last else 'level'}.")
 
     # ----------------------------------------------------------------- mouse
@@ -241,6 +264,7 @@ class Game:
             self.message = "No solution from here - try Undo or Restart"
         else:
             letter, step = solution[0]
+            self.hints[self.index] = self.hints.get(self.index, 0) + 1
             direction = DIRECTION_NAMES[(self.cars[letter].orient, step)]
             self.selected = letter
             self.do_move((letter, step))
@@ -260,21 +284,32 @@ class Game:
             self.message = "Undone."
         self.draw()
 
+    def play_again(self):
+        self.solved = {}
+        self.stars = {}
+        self.hints = {}
+        self.load(0)
+
     def press_restart(self):
         if self.finished:
-            self.total_moves = 0
-            self.load(0)
+            self.play_again()
             return
         self.load(self.index)
         self.message = "Restarted."
         self.draw()
 
     def press_next(self):
+        """Go on to the next level. Leaving an unsolved level skips it:
+        it is not counted as solved."""
         if self.finished:
-            self.total_moves = 0
-            self.load(0)
-        elif self.index + 1 < len(self.levels):
+            self.play_again()
+            return
+        skipped = self.index not in self.solved
+        if self.index + 1 < len(self.levels):
             self.load(self.index + 1)
+            if skipped:
+                self.message = f"Level {self.index} skipped (not solved). " + self.message
+                self.draw()
         else:
             self.end_screen()
 
@@ -282,19 +317,36 @@ class Game:
     def end_screen(self):
         self.finished = True
         self.drag = None
-        total_par = sum(lv["par"] for lv in self.levels)
+        total = len(self.levels)
+        moves = sum(self.solved.values())
+        par = sum(self.levels[i]["par"] for i in self.solved)
+        skipped = [str(i + 1) for i in range(total) if i not in self.solved]
         self.board.fill("slot")
-        for c in range(SIZE):
-            self.board[1][c] = "★"
-            self.board[4][c] = "★"
-        for c, word in enumerate(["ALL", "LEVELS", "DONE"], start=1):
-            self.board[2][c] = word
-        self.board[3][2] = "WELL"
-        self.board[3][3] = "PLAYED"
-        self.board.print(
-            f"All {len(self.levels)} levels complete!  Moves on solved levels: "
-            f"{self.total_moves}  (par total {total_par})\n"
-            f"Press Next level to play again, or Q to quit.")
+        if not skipped:
+            for c in range(SIZE):
+                self.board[1][c] = "★"
+                self.board[4][c] = "★"
+            for c, word in enumerate(["ALL", "LEVELS", "DONE"], start=1):
+                self.board[2][c] = word
+            self.board[3][2] = "WELL"
+            self.board[3][3] = "PLAYED"
+            summary = f"All {total} levels solved!"
+        else:
+            self.board[2][2] = "THE"
+            self.board[2][3] = "END"
+            self.board[3][1] = f"{len(self.solved)} of {total}"
+            self.board[3][2] = "LEVELS"
+            self.board[3][3] = "SOLVED"
+            summary = (f"Solved {len(self.solved)} of {total} levels. "
+                       f"Skipped: level{'s' if len(skipped) > 1 else ''} {', '.join(skipped)}.")
+        earned = sum(self.stars.values())
+        summary += f"  Stars {earned}/{MAX_STARS * total}."
+        if self.solved:
+            summary += f"  Moves {moves} (par {par})."
+        per_level = "   ".join(f"{i + 1} {star_text(self.stars.get(i, 0))}"
+                               for i in range(total))
+        self.board.print(f"{summary}\n{per_level}\n"
+                         f"Press Next level to play again, or Q to quit.")
 
     def draw(self):
         if self.finished:
@@ -318,7 +370,10 @@ class Game:
                 self.board[r][c] = value
         level = self.levels[self.index]
         status = (f"Level {self.index + 1} of {len(self.levels)}  ·  {level['name']}"
-                  f"      Moves {self.moves}   ·   Par {self.par}")
+                  f"      Moves {self.moves}   ·   Par {self.par}"
+                  f"   ·   Hints {self.hints.get(self.index, 0)}"
+                  f"\nSolved {len(self.solved)}/{len(self.levels)}   ·   "
+                  f"Stars {sum(self.stars.values())}/{MAX_STARS * len(self.levels)}")
         if self.won:
             status += "   ✔"
         self.board.print(f"{status}\n{self.message or ' '}\n{CONTROLS}")

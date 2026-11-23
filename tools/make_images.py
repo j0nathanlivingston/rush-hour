@@ -28,7 +28,7 @@ SELECT = (255, 214, 10)
 
 # must match CAR_COLOURS in display.py ("red" is the red car only)
 COLOURS = {
-    "red": (214, 34, 40),
+    "red": (235, 28, 36),
     "blue": (52, 110, 220),
     "teal": (28, 160, 160),
     "green": (70, 170, 75),
@@ -57,8 +57,12 @@ def slot_tile(d, x, y):
                         fill=SLOT, outline=SLOT_EDGE, width=3 * S)
 
 
-def draw_vehicle(length, rgb, selected):
-    """A vehicle facing right, as a (length*CELL x CELL) RGBA image."""
+def draw_vehicle(length, rgb, selected, hero=False):
+    """A vehicle facing right, as a (length*CELL x CELL) RGBA image.
+
+    hero=True is the red car: it gets a warm glow and white racing stripes
+    so it stands out from every other car.
+    """
     W, H = length * CELL * S, CELL * S
     img = Image.new("RGBA", (W, H))
     d = ImageDraw.Draw(img)
@@ -75,6 +79,13 @@ def draw_vehicle(length, rgb, selected):
     ImageDraw.Draw(sh).rounded_rectangle([x0 + 3 * S, y0 + 5 * S, x1 + 3 * S, y1 + 5 * S],
                                          radius=body_r, fill=(0, 0, 0, 110))
     img.alpha_composite(sh.filter(ImageFilter.GaussianBlur(5 * S)))
+    if hero:
+        glow = Image.new("RGBA", (W, H))
+        ImageDraw.Draw(glow).rounded_rectangle([x0 - 2 * S, y0 - 2 * S, x1 + 2 * S, y1 + 2 * S],
+                                               radius=body_r, fill=(255, 120, 60, 235))
+        glow = glow.filter(ImageFilter.GaussianBlur(5 * S))
+        img.alpha_composite(glow)
+        img.alpha_composite(glow)
     d = ImageDraw.Draw(img)
 
     # tyres poking out at the sides
@@ -96,6 +107,14 @@ def draw_vehicle(length, rgb, selected):
     d.rounded_rectangle([x0 + 3 * S, y0 + 3 * S, x1 - 3 * S, y1 - 5 * S],
                         radius=body_r - 3 * S, fill=rgb)
     hh = (y1 - y0)
+    mid = y0 + 0.5 * hh - 1 * S
+
+    def stripes(xa, xb):
+        if hero:
+            for off in (-7 * S, 3 * S):
+                d.rectangle([xa, mid + off, xb, mid + off + 4 * S], fill=(255, 255, 255))
+
+    stripes(x0 + 6 * S, x1 - 8 * S)
     if length == 2:
         # car: bonnet at the front (right), cabin in the middle, boot at back
         cx0, cx1 = x0 + 0.30 * (x1 - x0), x0 + 0.74 * (x1 - x0)
@@ -111,6 +130,7 @@ def draw_vehicle(length, rgb, selected):
                             radius=10 * S, fill=rgb)
         d.rounded_rectangle([cx0 + 20 * S, cy0 + 9 * S, cx1 - 36 * S, cy0 + 15 * S],
                             radius=4 * S, fill=light)
+        stripes(cx0 + 17 * S, cx1 - 30 * S)
         # bonnet crease and mirrors
         d.line([(cx1 + 8 * S, y0 + 0.5 * hh), (x1 - 16 * S, y0 + 0.5 * hh)],
                fill=dark, width=2 * S)
@@ -161,7 +181,7 @@ def main():
     for name, rgb in COLOURS.items():
         for length in (2, 3):
             for selected in (False, True):
-                car = draw_vehicle(length, rgb, selected)
+                car = draw_vehicle(length, rgb, selected, hero=(name == "red"))
                 save_slices(car, name, "h", length, selected)
                 if name != "red":       # the red car always lies across
                     # facing right -> rotate to face down

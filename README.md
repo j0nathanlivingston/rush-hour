@@ -41,6 +41,24 @@ The status bar shows the level, moves made, par, and messages such as
 * Par is the fewest possible moves, as found by the solver. Every one-cell
   slide counts as one move.
 
+## Stars and skipping
+
+Each solved level earns stars for how much help you needed:
+
+| Hints used on the level | Stars |
+|---|---|
+| none | ★★★ |
+| 1 to 3 | ★★☆ |
+| 4 or more | ★☆☆ |
+| level skipped (Next pressed before solving) | ☆☆☆ |
+
+Hints count for the whole level, including across restarts: once you have
+seen a hint, restarting does not wipe it. If you solve a level twice, the
+better result is kept. The status bar shows the hints used on this level,
+how many levels are solved and the stars so far (out of 3 per level); the
+end screen shows the stars for every level and lists any skipped ones.
+Skipped levels never count as solved.
+
 ## Files
 
 | File | Holds |
@@ -59,7 +77,7 @@ game2dboard shows one value per cell, and looks for `img/<value>.png`.
 Each car is drawn once as a whole top-down picture (cars are 2 cells,
 trucks 3; facing right when horizontal, down when vertical) and cut into
 one slice per cell, so `display.draw` just writes the right slice name into
-each cell. The red car is always red; the other cars get colours in order.
+each cell. The red car is always red, with white racing stripes and a glow so it stands out; the other cars get colours in order.
 
 game2dboard only reports mouse presses and key presses, so mouse dragging
 and the button row are attached to the Tk window it creates
